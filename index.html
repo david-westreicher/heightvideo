@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 	<head>
@@ -25,10 +24,16 @@
 		<video id="video" autoplay loop muted style="display:none">
 			<!--<source src="textures/sintel.mp4" type='video/mp4; codecs="avc1.42E01E, mp4a.40.2"'>
 	   <source src="textures/sintel.ogv" type='video/ogg; codecs="theora, vorbis"'>--!>
-			<source src="textures/mov_bbb.mp4" type='video/mp4'>
+			<source src="textures/big_buck_bunny.mp4" type='video/mp4'>
 		</video>
 
 		<script id="vertexShader" type="x-shader/x-vertex">
+            uniform sampler2D tex;
+            varying vec2 vUV;
+            varying vec3 norm;
+            const vec2 size = vec2(2.0,0.0);
+            const vec3 off = vec3(-0.005,0.0,0.005);
+
             vec3 rgb2hsv(vec3 c){
                 vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
                 vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
@@ -39,15 +44,30 @@
                 return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
             }
 
-            uniform sampler2D tex;
-            varying vec2 vUV;
+            float height(vec3 col){
+                float height = rgb2hsv(col).b*20.0;
+                return height;
+            }
+
+            vec3 offset(sampler2D tex, vec2 uv, vec2 off){
+                return texture2D(tex,uv+off).rgb;
+            }
+
+            vec3 grad(sampler2D tex, vec2 uv){
+    			float s01 = height(offset(tex, uv, off.xy));
+    			float s21 = height(offset(tex, uv, off.zy));
+    			float s10 = height(offset(tex, uv, off.yx));
+    			float s12 = height(offset(tex, uv, off.yz));
+    			vec3 va = normalize(vec3(size.xy,s21-s01));
+    			vec3 vb = normalize(vec3(size.yx,s12-s10));
+    			return cross(va,vb);
+            }
+
 			void main()	{
 			    vec3 pos = position;
 			    vUV = uv;
-			    //vec3 col = texture2D(tex,uv).rgb;
-			    //pos.z = length(col)*100.0;
-			    vec3 col = rgb2hsv(texture2D(tex,uv).rgb);
-			    pos.z = col.b*50.0;
+			    pos.z = height(texture2D(tex,uv).rgb);
+			    norm = grad(tex,uv);
 				gl_Position = projectionMatrix * modelViewMatrix * vec4( pos, 1.0 );
 			}
 
@@ -57,8 +77,12 @@
 
             uniform sampler2D tex;
             varying vec2 vUV;
+            varying vec3 norm;
+            const vec3 lvec = normalize(vec3(-1.0,1.0,1.0));
 			void main()	{
-				gl_FragColor = texture2D(tex,vUV);
+				vec3 diff = texture2D(tex,vUV).rgb;
+				float light = max(dot(norm,lvec),0.5);
+				gl_FragColor = vec4(diff*light,1.0);
 			}
 		</script>
 
@@ -69,46 +93,14 @@
 
 			var container, stats;
 
+            var mouseX, mouseY;
 			var camera, scene, renderer;
 
 			init();
 			animate();
 
-			function init() {
-
-				container = document.createElement( 'div' );
-				document.body.appendChild( container );
-
-				camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 1, 2000 );
-				camera.position.z = 250;
-				//camera.position.y = -200;
-
-				scene = new THREE.Scene();
-
-				var object;
-
-				video = document.getElementById( 'video' );
-				texture = new THREE.VideoTexture( video );
-				texture.minFilter = THREE.NearestFilter;
-				texture.magFilter = THREE.NearestFilter;
-				texture.format = THREE.RGBFormat;
-
-				var uniforms = {
-				    tex: {type: "t", value: texture }
-				};
-
-				var material = new THREE.ShaderMaterial( {
-
-					uniforms: uniforms,
-					vertexShader: document.getElementById( 'vertexShader' ).textContent,
-					fragmentShader: document.getElementById( 'fragmentShader' ).textContent,
-					wireframe: true
-					//wireframe: false
-
-				} );
-
-
-                var mSize = 500.0;
+            function createGeom(){
+                var mSize = 200.0;
                 var geometry = new THREE.Geometry();
                 var vi = 0;
 				for(var x=0.0;x<mSize;x++){
@@ -141,8 +133,43 @@
 				}
 				geometry.uvsNeedUpdate = true;
 				geometry.center();
+				return geometry;
+            }
 
-				scene.add(new THREE.Mesh(geometry,material));
+			function init() {
+
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 1, 2000 );
+				camera.position.z = 150;
+				//camera.position.y = -200;
+
+				scene = new THREE.Scene();
+
+				var object;
+
+				video = document.getElementById( 'video' );
+				texture = new THREE.VideoTexture( video );
+				texture.minFilter = THREE.LinearFilter;
+				texture.magFilter = THREE.LinearFilter;
+				texture.format = THREE.RGBFormat;
+var uniforms = {
+				    tex: {type: "t", value: texture }
+				};
+
+				var material = new THREE.ShaderMaterial( {
+
+					uniforms: uniforms,
+					vertexShader: document.getElementById( 'vertexShader' ).textContent,
+					fragmentShader: document.getElementById( 'fragmentShader' ).textContent,
+					//wireframe: true
+					wireframe: false
+
+				} );
+
+
+				scene.add(new THREE.Mesh(createGeom(),material));
 
 
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
@@ -156,33 +183,34 @@
 				stats.domElement.style.top = '0px';
 				container.appendChild( stats.domElement );
 
-				//
-
 				window.addEventListener( 'resize', onWindowResize, false );
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+			}
 
+			function onDocumentMouseMove( event ) {
+				mouseX = ( event.clientX - window.innerWidth / 2 );
+				mouseY = ( event.clientY - window.innerHeight / 2 );
 			}
 
 			function onWindowResize() {
-
 				camera.aspect = window.innerWidth / window.innerHeight;
 				camera.updateProjectionMatrix();
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
-
 			}
 
-			//
-
 			function animate() {
-
 				requestAnimationFrame( animate );
-
 				render();
 				stats.update();
-
 			}
 
 			function render() {
+			    var y = 2.0*mouseY/window.innerHeight;
+			    var x = 2.0*mouseX/window.innerWidth;
+			    camera.position.y = y*camera.position.z;
+			    camera.position.x = -x*camera.position.z;
+			    
 				camera.lookAt(scene.position );
 				renderer.render( scene, camera );
 			}
