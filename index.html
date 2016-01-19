@@ -29,10 +29,10 @@
 
 		<script id="vertexShader" type="x-shader/x-vertex">
             uniform sampler2D tex;
+            uniform vec3 off;
             varying vec2 vUV;
             varying vec3 norm;
             const vec2 size = vec2(2.0,0.0);
-            const vec3 off = vec3(-0.005,0.0,0.005);
 
             vec3 rgb2hsv(vec3 c){
                 vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -83,16 +83,20 @@
 				vec3 diff = texture2D(tex,vUV).rgb;
 				float light = max(dot(norm,lvec),0.5);
 				gl_FragColor = vec4(diff*light,1.0);
+				//gl_FragColor = vec4(norm,1.0);
 			}
 		</script>
 
 
 		<script>
 
+            //TODO: downsample video texture before use!!!
+
 			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
 
 			var container, stats;
 
+            var uniforms;
             var mouseX, mouseY;
 			var camera, scene, renderer;
 
@@ -143,29 +147,30 @@
 
 				camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 1, 2000 );
 				camera.position.z = 150;
-				//camera.position.y = -200;
 
 				scene = new THREE.Scene();
-
-				var object;
 
 				video = document.getElementById( 'video' );
 				texture = new THREE.VideoTexture( video );
 				texture.minFilter = THREE.LinearFilter;
 				texture.magFilter = THREE.LinearFilter;
 				texture.format = THREE.RGBFormat;
-var uniforms = {
-				    tex: {type: "t", value: texture }
+                uniforms = {
+				    tex: {type: "t", value: texture },
+				    off: {type: "v3", value: new THREE.Vector3(-0.005,0.0,0.005) }
 				};
+				video.addEventListener("loadedmetadata", function(e){
+				    uniforms.off.value.x = 1.0/this.videoWidth;
+				    uniforms.off.value.z = 1.0/this.videoHeight;
+				    console.log(uniforms.off.value);
+				},false);
 
 				var material = new THREE.ShaderMaterial( {
-
 					uniforms: uniforms,
 					vertexShader: document.getElementById( 'vertexShader' ).textContent,
 					fragmentShader: document.getElementById( 'fragmentShader' ).textContent,
 					//wireframe: true
 					wireframe: false
-
 				} );
 
 
